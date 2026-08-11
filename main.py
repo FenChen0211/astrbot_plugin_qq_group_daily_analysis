@@ -590,7 +590,10 @@ class GroupDailyAnalysis(Star):
     def _admin_only_result(event: AstrMessageEvent):
         return event.plain_result("❌ 仅 AstrBot 管理员可以执行此命令")
 
-    @filter.command("群分析", alias={"group_analysis"})
+    # CommandFilter is not activated for this plugin on AstrBot 4.26.6 even
+    # after a configured wake prefix is consumed. Match the normalized command
+    # text directly so `/群分析 [天数]` remains available.
+    @filter.regex(r"^群分析(?:\s+\d+)?$")
     async def analyze_group_daily(
         self, event: AstrMessageEvent, days: int | None = None
     ):
@@ -604,6 +607,12 @@ class GroupDailyAnalysis(Star):
         if not self._is_astrbot_admin(event):
             yield self._admin_only_result(event)
             return
+
+        # RegexFilter does not populate command parameters. The waking stage
+        # has already removed the configured `/` prefix from message_str.
+        command_parts = event.get_message_str().strip().split()
+        if len(command_parts) == 2:
+            days = int(command_parts[1])
 
         current_task = asyncio.current_task()
         if current_task:
