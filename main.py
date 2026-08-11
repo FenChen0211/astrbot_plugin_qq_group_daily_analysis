@@ -14,7 +14,6 @@ from urllib.parse import quote
 from astrbot.api import AstrBotConfig
 from astrbot.api import logger as astrbot_logger
 from astrbot.api.event import AstrMessageEvent, filter
-from astrbot.api.event.filter import PermissionType
 from astrbot.api.star import Context, Star, StarTools
 
 # File is only available via astrbot.core (internal API — may change).
@@ -575,8 +574,21 @@ class GroupDailyAnalysis(Star):
                 except OSError:
                     pass
 
+    def _is_astrbot_admin(self, event: AstrMessageEvent) -> bool:
+        """Return whether the sender is listed in AstrBot's global admins_id."""
+        try:
+            runtime_config = self.context.get_config(umo=event.unified_msg_origin)
+            admin_ids = {str(item) for item in runtime_config.get("admins_id", [])}
+            return str(event.get_sender_id()) in admin_ids
+        except Exception:
+            logger.exception("读取 AstrBot 管理员配置失败")
+            return False
+
+    @staticmethod
+    def _admin_only_result(event: AstrMessageEvent):
+        return event.plain_result("❌ 仅 AstrBot 管理员可以执行此命令")
+
     @filter.command("群分析", alias={"group_analysis"})
-    @filter.permission_type(PermissionType.ADMIN)
     async def analyze_group_daily(
         self, event: AstrMessageEvent, days: int | None = None
     ):
@@ -585,6 +597,10 @@ class GroupDailyAnalysis(Star):
         用法: /群分析 [天数]
         """
         if self._terminating:
+            return
+
+        if not self._is_astrbot_admin(event):
+            yield self._admin_only_result(event)
             return
 
         current_task = asyncio.current_task()
@@ -850,12 +866,15 @@ class GroupDailyAnalysis(Star):
         return await adapter.send_text_report(group_id, tr)
 
     @filter.command("设置格式", alias={"set_format"})
-    @filter.permission_type(PermissionType.ADMIN)
     async def set_output_format(self, event: AstrMessageEvent, format_input: str = ""):
         """
         设置分析报告输出格式（跨平台支持）
         用法: /设置格式 [格式名称或序号] 或 image,html 等逗号分隔的组合
         """
+        if not self._is_astrbot_admin(event):
+            yield self._admin_only_result(event)
+            return
+
         # 命令由插件处理，禁用默认 LLM 回退。
         event.should_call_llm(True)
 
@@ -919,7 +938,6 @@ class GroupDailyAnalysis(Star):
             yield event.plain_result(f"❌ 设置失败: {e}")
 
     @filter.command("设置模板", alias={"set_template"})
-    @filter.permission_type(PermissionType.ADMIN)
     async def set_report_template(
         self, event: AstrMessageEvent, template_input: str = ""
     ):
@@ -927,6 +945,10 @@ class GroupDailyAnalysis(Star):
         设置分析报告模板（跨平台支持）
         用法: /设置模板 [模板名称或序号]
         """
+        if not self._is_astrbot_admin(event):
+            yield self._admin_only_result(event)
+            return
+
         # 命令由插件处理，禁用默认 LLM 回退。
         event.should_call_llm(True)
 
@@ -967,12 +989,15 @@ class GroupDailyAnalysis(Star):
         yield event.plain_result(f"✅ 报告模板已设置为: {template_name}")
 
     @filter.command("查看模板", alias={"view_templates"})
-    @filter.permission_type(PermissionType.ADMIN)
     async def view_templates(self, event: AstrMessageEvent):
         """
         查看所有可用的报告模板及预览图（跨平台支持）
         用法: /查看模板
         """
+        if not self._is_astrbot_admin(event):
+            yield self._admin_only_result(event)
+            return
+
         # 命令由插件处理，禁用默认 LLM 回退。
         event.should_call_llm(True)
 
@@ -1009,7 +1034,6 @@ class GroupDailyAnalysis(Star):
         yield event.chain_result([preview_nodes])
 
     @filter.command("分析设置", alias={"analysis_settings"})
-    @filter.permission_type(PermissionType.ADMIN)
     async def analysis_settings(self, event: AstrMessageEvent, action: str = "status"):
         """
         管理分析设置（跨平台支持）
@@ -1022,6 +1046,10 @@ class GroupDailyAnalysis(Star):
         - filter_bot: 切换是否在分析中包含机器人自己的消息
         - incremental_debug: 切换增量分析立即报告模式（调试用）
         """
+        if not self._is_astrbot_admin(event):
+            yield self._admin_only_result(event)
+            return
+
         group_id = self._get_group_id_from_event(event)
 
         if not group_id:
@@ -1133,9 +1161,12 @@ class GroupDailyAnalysis(Star):
 💡 其他命令: /设置格式, /增量状态""")
 
     @filter.command("增量状态", alias={"incremental_status"})
-    @filter.permission_type(PermissionType.ADMIN)
     async def incremental_status(self, event: AstrMessageEvent):
         """查看当前增量分析状态（滑动窗口）"""
+        if not self._is_astrbot_admin(event):
+            yield self._admin_only_result(event)
+            return
+
         group_id = self._get_group_id_from_event(event)
         if not group_id:
             yield event.plain_result("❌ 请在群聊中使用此命令")
