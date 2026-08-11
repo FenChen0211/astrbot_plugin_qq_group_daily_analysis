@@ -577,7 +577,9 @@ class GroupDailyAnalysis(Star):
     def _is_astrbot_admin(self, event: AstrMessageEvent) -> bool:
         """Return whether the sender is listed in AstrBot's global admins_id."""
         try:
-            runtime_config = self.context.get_config(umo=event.unified_msg_origin)
+            # admins_id is an AstrBot global setting; do not read a
+            # conversation-specific override here.
+            runtime_config = self.context.get_config()
             admin_ids = {str(item) for item in runtime_config.get("admins_id", [])}
             return str(event.get_sender_id()) in admin_ids
         except Exception:
